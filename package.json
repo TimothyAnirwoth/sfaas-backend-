@@ -6,9 +6,9 @@
     "start": "node index.js"  
   },
   "keywords": [],
-  "author": "",
+  "author": "Timothy Anirwoth",
   "license": "ISC",
-  "description": "",
+  "description": "Node Express server for SFaaS WhatsApp bot",
   "dependencies": {
     "axios": "^1.11.0",
     "dotenv": "^17.2.1",
@@ -17,5 +17,5 @@
     "twilio": "^5.8.0"
   }
 }
-
+ 
 

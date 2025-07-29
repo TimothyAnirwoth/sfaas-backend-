@@ -1,10 +1,19 @@
+const admin = require("firebase-admin");
+const serviceAccount = require("./firebase-key.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+const db = admin.firestore();
+
 const express = require("express");
 const multer = require("multer");
 const axios = require("axios");
 const { twiml: { MessagingResponse } } = require("twilio");
 
 const app = express();
-const upload = multer(); // memory storage, no local file saving
+const upload = multer(); // memory storage
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -22,34 +31,50 @@ app.post("/whatsapp", upload.none(), async (req, res) => {
   console.log("Image URL:", mediaUrl);
 
   const twiml = new MessagingResponse();
+  let diagnosis = "";
 
   if (!mediaUrl) {
-    twiml.message("Please send a clear image of your plant for diagnosis.");
-    res.set("Content-Type", "text/xml");
-    return res.send(twiml.toString());
+    diagnosis = "Please send a clear image of your plant for diagnosis.";
+    twiml.message(diagnosis);
+  } else {
+    try {
+      const response = await axios({
+        method: "POST",
+        url: roboflowURL,
+        params: {
+          api_key: roboflowAPIKey,
+          image: mediaUrl,
+        }
+      });
+
+      const predictions = response.data.predictions;
+
+      if (predictions.length === 0) {
+        diagnosis = "Sorry, we couldn’t detect any plant diseases in that image.";
+      } else {
+        const topPrediction = predictions[0];
+        diagnosis = `🩺 Diagnosis: ${topPrediction.class} (Confidence: ${(topPrediction.confidence * 100).toFixed(2)}%)`;
+      }
+
+      twiml.message(diagnosis);
+    } catch (err) {
+      console.error("Diagnosis error:", err.message);
+      diagnosis = "There was an error during diagnosis. Please try again later.";
+      twiml.message(diagnosis);
+    }
   }
 
+  // ✅ Save to Firestore
   try {
-    const diagnosis = await axios({
-      method: "POST",
-      url: roboflowURL,
-      params: {
-        api_key: roboflowAPIKey,
-        image: mediaUrl,
-      }
+    await db.collection("messages").add({
+      from,
+      body: msgBody,
+      imageUrl: mediaUrl || null,
+      diagnosis,
+      timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
-
-    const predictions = diagnosis.data.predictions;
-
-    if (predictions.length === 0) {
-      twiml.message("Sorry, we couldn’t detect any plant diseases in that image.");
-    } else {
-      const topPrediction = predictions[0];
-      twiml.message(`🩺 Diagnosis: ${topPrediction.class} (Confidence: ${(topPrediction.confidence * 100).toFixed(2)}%)`);
-    }
-  } catch (err) {
-    console.error("Diagnosis error:", err.message);
-    twiml.message("There was an error during diagnosis. Please try again later.");
+  } catch (error) {
+    console.error("Error saving to Firestore:", error.message);
   }
 
   res.set("Content-Type", "text/xml");

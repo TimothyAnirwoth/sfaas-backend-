@@ -4,10 +4,14 @@ const axios = require("axios");
 const MessagingResponse = require("twilio").twiml.MessagingResponse;
 
 const app = express();
-const upload = multer({ dest: "uploads/" }); // for local testing
+const upload = multer({ dest: "uploads/" }); // For local testing
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+
+// Roboflow AI config
+const roboflowURL = "https://serverless.roboflow.com/plant-disease-detection-v2-2nclk/1";
+const roboflowAPIKey = "3ljfVdk94Wi0WmmyCzcO";
 
 app.post("/whatsapp", upload.single("MediaUrl0"), async (req, res) => {
   const msgBody = req.body.Body;
@@ -18,9 +22,33 @@ app.post("/whatsapp", upload.single("MediaUrl0"), async (req, res) => {
   console.log("From:", from);
   console.log("Image URL:", mediaUrl);
 
-  const diagnosis = mediaUrl
-    ? "This plant may have maize leaf blight."
-    : "Please send a clear image of your plant for diagnosis.";
+  let diagnosis = "Please send a clear image of your plant for diagnosis.";
+
+  if (mediaUrl) {
+    try {
+      const response = await axios({
+        method: "POST",
+        url: roboflowURL,
+        params: {
+          api_key: roboflowAPIKey,
+          image: mediaUrl, // Use WhatsApp-hosted image URL
+        },
+      });
+
+      const prediction = response.data.predictions?.[0];
+
+      if (prediction) {
+        diagnosis = `Detected: ${prediction.class} (confidence: ${Math.round(
+          prediction.confidence * 100
+        )}%)`;
+      } else {
+        diagnosis = "No clear disease detected. Try another photo.";
+      }
+    } catch (error) {
+      console.error("Diagnosis error:", error.message);
+      diagnosis = "Error during diagnosis. Try again later.";
+    }
+  }
 
   const twiml = new MessagingResponse();
   twiml.message(diagnosis);

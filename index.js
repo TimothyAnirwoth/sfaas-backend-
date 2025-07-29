@@ -9,7 +9,7 @@ const upload = multer({ dest: "uploads/" }); // For local testing
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// Roboflow AI config
+// Roboflow config
 const roboflowURL = "https://serverless.roboflow.com/plant-disease-detection-v2-2nclk/1";
 const roboflowAPIKey = "3ljfVdk94Wi0WmmyCzcO";
 
@@ -26,12 +26,20 @@ app.post("/whatsapp", upload.single("MediaUrl0"), async (req, res) => {
 
   if (mediaUrl) {
     try {
+      // Step 1: Download image from Twilio
+      const imageResponse = await axios.get(mediaUrl, { responseType: "arraybuffer" });
+      const base64Image = Buffer.from(imageResponse.data, "binary").toString("base64");
+
+      // Step 2: Send image to Roboflow
       const response = await axios({
         method: "POST",
         url: roboflowURL,
         params: {
           api_key: roboflowAPIKey,
-          image: mediaUrl, // Use WhatsApp-hosted image URL
+        },
+        data: base64Image,
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
         },
       });
 
@@ -52,7 +60,6 @@ app.post("/whatsapp", upload.single("MediaUrl0"), async (req, res) => {
 
   const twiml = new MessagingResponse();
   twiml.message(diagnosis);
-
   res.set("Content-Type", "text/xml");
   res.send(twiml.toString());
 });
